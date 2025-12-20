@@ -4,9 +4,10 @@ import type { Page } from '@playwright/test';
 import { IS_EE } from '../config/constants';
 import { Users } from '../fixtures/userStates';
 import { OmnichannelChats } from '../page-objects';
+import { setSettingValueById } from '../utils';
 import { createAgent, makeAgentAvailable } from '../utils/omnichannel/agents';
 import { addAgentToDepartment, createDepartment } from '../utils/omnichannel/departments';
-import { createConversation, updateRoom } from '../utils/omnichannel/rooms';
+import { createConversation, updateRoom, waitForInquiryToBeTaken } from '../utils/omnichannel/rooms';
 import { createTag } from '../utils/omnichannel/tags';
 import { test, expect } from '../utils/test';
 
@@ -28,8 +29,10 @@ test.describe('OC - Contact Center Chats [Auto Selection]', async () => {
 	// Allow manual on hold
 	test.beforeAll(async ({ api }) => {
 		const responses = await Promise.all([
-			api.post('/settings/Livechat_allow_manual_on_hold', { value: true }),
-			api.post('/settings/Livechat_allow_manual_on_hold_upon_agent_engagement_only', { value: false }),
+			setSettingValueById(api, 'Livechat_allow_manual_on_hold', true),
+			setSettingValueById(api, 'Livechat_allow_manual_on_hold_upon_agent_engagement_only', false),
+			setSettingValueById(api, 'Livechat_waiting_queue', true),
+			setSettingValueById(api, 'Omnichannel_queue_delay_timeout', 1),
 		]);
 		responses.forEach((res) => expect(res.status()).toBe(200));
 	});
@@ -90,6 +93,11 @@ test.describe('OC - Contact Center Chats [Auto Selection]', async () => {
 			}),
 		]);
 
+		await waitForInquiryToBeTaken(
+			api,
+			conversations.map((c) => c.data.room._id),
+		);
+
 		const [conversationA, conversationB] = conversations.map(({ data }) => data);
 
 		await Promise.all([
@@ -124,8 +132,10 @@ test.describe('OC - Contact Center Chats [Auto Selection]', async () => {
 			// Delete tags
 			...tags.map((tag) => tag.delete()),
 			// Reset setting
-			api.post('/settings/Livechat_allow_manual_on_hold', { value: false }),
-			api.post('/settings/Livechat_allow_manual_on_hold_upon_agent_engagement_only', { value: true }),
+			setSettingValueById(api, 'Livechat_allow_manual_on_hold', false),
+			setSettingValueById(api, 'Livechat_allow_manual_on_hold_upon_agent_engagement_only', true),
+			setSettingValueById(api, 'Livechat_waiting_queue', false),
+			setSettingValueById(api, 'Omnichannel_queue_delay_timeout', 5),
 		]);
 	});
 
