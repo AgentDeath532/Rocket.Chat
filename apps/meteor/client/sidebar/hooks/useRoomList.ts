@@ -66,7 +66,7 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 			const conversation = new Set<SubscriptionWithRoom>();
 			const onHold = new Set<SubscriptionWithRoom>();
 
-			// MANUAL MAPPING: Map Channel Names to their Parent Team Names
+			// MAPPING: Ensure these exact channel names are moved to Teams
 			const teamMapping: Record<string, string> = {
 				"General Logs": "Scale Hosting Client Logs",
 				"Anti Fraud": "Scale Hosting Client Logs",
@@ -106,10 +106,10 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 					return team.add(room);
 				}
 
-				// CUSTOM LOGIC: Intercept Mapped Channels and put them in the Teams Set
+				// CUSTOM LOGIC: Intercept Mapped Channels
 				const parentTeamName = teamMapping[room.name || ''];
 				if (sidebarGroupByType && parentTeamName) {
-					return team.add(row);
+					return team.add(room);
 				}
 
 				if (sidebarGroupByType && isDiscussionEnabled && room.prid) {
@@ -135,53 +135,39 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 				conversation.add(room);
 			});
 
-			// CUSTOM SORTING: Ensure channels appear directly under their Team Parent
+			// SORTING: Nesting logic for the Team list
 			const sortedTeamArray = [...team].sort((a: any, b: any) => {
 				const aName = a.name || '';
 				const bName = b.name || '';
 				const aParent = teamMapping[aName];
 				const bParent = teamMapping[bName];
 
-				// If A is a child of B
 				if (aParent === bName) return 1;
-				// If B is a child of A
 				if (bParent === aName) return -1;
-				// If both share the same parent, sort them alphabetically
 				if (aParent && aParent === bParent) return aName.localeCompare(bName);
-				// Default: Sort Teams alphabetically
 				return aName.localeCompare(bName);
 			});
 
 			const groups = new Map<string, Set<any>>();
-			incomingCall.size && groups.set('Incoming_Calls', incomingCall);
+			if (incomingCall.size) groups.set('Incoming_Calls', incomingCall);
+			if (showOmnichannel && inquiries.enabled && queue.length) groups.set('Incoming_Livechats', new Set(queue));
+			if (showOmnichannel && omnichannel.size) groups.set('Open_Livechats', omnichannel);
+			if (showOmnichannel && onHold.size) groups.set('On_Hold_Chats', onHold);
+			if (sidebarShowUnread && unread.size) groups.set('Unread', unread);
+			if (favoritesEnabled && favorite.size) groups.set('Favorites', favorite);
+			
+			// Inject our sorted array into the Teams section
+			if (sidebarGroupByType && sortedTeamArray.length) groups.set('Teams', new Set(sortedTeamArray));
 
-			showOmnichannel && inquiries.enabled && queue.length && groups.set('Incoming_Livechats', new Set(queue));
-			showOmnichannel && omnichannel.size && groups.set('Open_Livechats', omnichannel);
-			showOmnichannel && onHold.size && groups.set('On_Hold_Chats', onHold);
+			if (sidebarGroupByType && isDiscussionEnabled && discussion.size) groups.set('Discussions', discussion);
+			if (sidebarGroupByType && channels.size) groups.set('Channels', channels);
+			if (sidebarGroupByType && direct.size) groups.set('Direct_Messages', direct);
+			if (!sidebarGroupByType) groups.set('Conversations', conversation);
 
-			sidebarShowUnread && unread.size && groups.set('Unread', unread);
-
-			favoritesEnabled && favorite.size && groups.set('Favorites', favorite);
-
-			// USE THE SORTED TEAM ARRAY
-			sidebarGroupByType && sortedTeamArray.length && groups.set('Teams', new Set(sortedTeamArray));
-
-			sidebarGroupByType && isDiscussionEnabled && discussion.size && groups.set('Discussions', discussion);
-
-			// HIDE CHANNELS: We comment this out to hide the separate 'Channels' tab
-			// sidebarGroupByType && channels.size && groups.set('Channels', channels);
-
-			sidebarGroupByType && direct.size && groups.set('Direct_Messages', direct);
-
-			!sidebarGroupByType && groups.set('Conversations', conversation);
-
-			const { groupsCount, groupsList, roomList, groupedUnreadInfo } = sidebarOrder.reduce(
+			return sidebarOrder.reduce(
 				(acc, key) => {
 					const value = groups.get(key);
-
-					if (!value) {
-						return acc;
-					}
+					if (!value) return acc;
 
 					acc.groupsList.push(key as TranslationKey);
 
@@ -195,17 +181,14 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 
 					if (isCollapsed(key)) {
 						const groupedUnreadInfo = [...value].reduce(
-							(counter, { userMentions, groupMentions, tunread, tunreadUser, unread, alert, hideUnreadStatus }) => {
-								if (hideUnreadStatus) {
-									return counter;
-								}
-
-								counter.userMentions += userMentions || 0;
-								counter.groupMentions += groupMentions || 0;
-								counter.tunread = [...counter.tunread, ...(tunread || [])];
-								counter.tunreadUser = [...counter.tunreadUser, ...(tunreadUser || [])];
-								counter.unread += unread || 0;
-								!unread && !tunread?.length && alert && (counter.unread += 1);
+							(counter, room) => {
+								if (room.hideUnreadStatus) return counter;
+								counter.userMentions += room.userMentions || 0;
+								counter.groupMentions += room.groupMentions || 0;
+								counter.tunread = [...counter.tunread, ...(room.tunread || [])];
+								counter.tunreadUser = [...counter.tunreadUser, ...(room.tunreadUser || [])];
+								counter.unread += room.unread || 0;
+								!room.unread && !room.tunread?.length && room.alert && (counter.unread += 1);
 								return counter;
 							},
 							groupedUnreadInfoAcc,
@@ -228,8 +211,6 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 					groupedUnreadInfo: [],
 				} as useRoomListReturnType,
 			);
-
-			return { groupsCount, groupsList, roomList, groupedUnreadInfo };
 		}, [
 			rooms,
 			showOmnichannel,
@@ -252,4 +233,4 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 		groupsList,
 		groupedUnreadInfo,
 	};
-};t
+};
