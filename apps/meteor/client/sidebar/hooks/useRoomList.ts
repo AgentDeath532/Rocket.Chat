@@ -36,6 +36,7 @@ type useRoomListReturnType = {
 		'userMentions' | 'groupMentions' | 'unread' | 'tunread' | 'tunreadUser' | 'tunreadGroup' | 'alert' | 'hideUnreadStatus'
 	>[];
 };
+
 export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] }): useRoomListReturnType => {
 	const showOmnichannel = useOmnichannelEnabled();
 	const sidebarGroupByType = useUserPreference('sidebarGroupByType');
@@ -45,29 +46,44 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 	const sidebarShowUnread = useUserPreference('sidebarShowUnread');
 
 	const options = useSortQueryOptions();
-
 	const rooms = useUserSubscriptions(query, options);
-
 	const inquiries = useQueuedInquiries();
-
 	const incomingCalls = useVideoConfIncomingCalls();
-
 	const queue = inquiries.enabled ? inquiries.queue : emptyQueue;
 
 	const { groupsCount, groupsList, roomList, groupedUnreadInfo } = useDebouncedValue(
 		useMemo(() => {
 			const isCollapsed = (groupTitle: string) => collapsedGroups?.includes(groupTitle);
 
-			const incomingCall = new Set();
-			const favorite = new Set();
-			const team = new Set();
-			const omnichannel = new Set();
-			const unread = new Set();
-			const channels = new Set();
-			const direct = new Set();
-			const discussion = new Set();
-			const conversation = new Set();
-			const onHold = new Set();
+			const incomingCall = new Set<SubscriptionWithRoom>();
+			const favorite = new Set<SubscriptionWithRoom>();
+			const team = new Set<SubscriptionWithRoom>();
+			const omnichannel = new Set<SubscriptionWithRoom>();
+			const unread = new Set<SubscriptionWithRoom>();
+			const channels = new Set<SubscriptionWithRoom>();
+			const direct = new Set<SubscriptionWithRoom>();
+			const discussion = new Set<SubscriptionWithRoom>();
+			const conversation = new Set<SubscriptionWithRoom>();
+			const onHold = new Set<SubscriptionWithRoom>();
+
+			// MANUAL MAPPING: Map Channel Names to their Parent Team Names
+			const teamMapping: Record<string, string> = {
+				"General Logs": "Scale Hosting Client Logs",
+				"Anti Fraud": "Scale Hosting Client Logs",
+				"Suspicious Accounts": "Scale Hosting Client Logs",
+				"VPN Detected": "Scale Hosting Client Logs",
+				"Blocked Registration": "Scale Hosting Client Logs",
+				"Failed Logins": "Scale Hosting Client Logs",
+				"IP Blocked": "Scale Hosting Client Logs",
+				"Account Suspeneded": "Scale Hosting Client Logs",
+				"Server-Abuse": "Scale Hosting Dev Panel Logs",
+				"Server Delete": "Scale Hosting Dev Panel Logs",
+				"Server Update": "Scale Hosting Dev Panel Logs",
+				"Server Create": "Scale Hosting Dev Panel Logs",
+				"Server Suspened": "Scale Hosting Dev Panel Logs",
+				"Account Delete": "Scale Hosting Dev Panel Logs",
+				"Account Login": "Scale Hosting Dev Panel Logs"
+			};
 
 			rooms.forEach((room) => {
 				if (room.archived) {
@@ -90,12 +106,18 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 					return team.add(room);
 				}
 
+				// CUSTOM LOGIC: Intercept Mapped Channels and put them in the Teams Set
+				const parentTeamName = teamMapping[room.name || ''];
+				if (sidebarGroupByType && parentTeamName) {
+					return team.add(row);
+				}
+
 				if (sidebarGroupByType && isDiscussionEnabled && room.prid) {
 					return discussion.add(room);
 				}
 
 				if (room.t === 'c' || room.t === 'p') {
-					channels.add(room);
+					return channels.add(room);
 				}
 
 				if (room.t === 'l' && room.onHold) {
@@ -107,10 +129,27 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 				}
 
 				if (room.t === 'd') {
-					direct.add(room);
+					return direct.add(room);
 				}
 
 				conversation.add(room);
+			});
+
+			// CUSTOM SORTING: Ensure channels appear directly under their Team Parent
+			const sortedTeamArray = [...team].sort((a: any, b: any) => {
+				const aName = a.name || '';
+				const bName = b.name || '';
+				const aParent = teamMapping[aName];
+				const bParent = teamMapping[bName];
+
+				// If A is a child of B
+				if (aParent === bName) return 1;
+				// If B is a child of A
+				if (bParent === aName) return -1;
+				// If both share the same parent, sort them alphabetically
+				if (aParent && aParent === bParent) return aName.localeCompare(bName);
+				// Default: Sort Teams alphabetically
+				return aName.localeCompare(bName);
 			});
 
 			const groups = new Map<string, Set<any>>();
@@ -124,11 +163,13 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 
 			favoritesEnabled && favorite.size && groups.set('Favorites', favorite);
 
-			sidebarGroupByType && team.size && groups.set('Teams', team);
+			// USE THE SORTED TEAM ARRAY
+			sidebarGroupByType && sortedTeamArray.length && groups.set('Teams', new Set(sortedTeamArray));
 
 			sidebarGroupByType && isDiscussionEnabled && discussion.size && groups.set('Discussions', discussion);
 
-			sidebarGroupByType && channels.size && groups.set('Channels', channels);
+			// HIDE CHANNELS: We comment this out to hide the separate 'Channels' tab
+			// sidebarGroupByType && channels.size && groups.set('Channels', channels);
 
 			sidebarGroupByType && direct.size && groups.set('Direct_Messages', direct);
 
@@ -211,4 +252,4 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 		groupsList,
 		groupedUnreadInfo,
 	};
-};
+};t
