@@ -4,7 +4,7 @@ import { useMutation } from '@tanstack/react-query';
 import { useCallback, useState } from 'react';
 
 import { AppClientOrchestratorInstance } from '../../../apps/orchestrator';
-import { useAppsReload } from '../../../contexts/hooks/useAppsReload';
+import { useAppsReload } from './useAppsReload';
 import { useIsEnterprise } from '../../../hooks/useIsEnterprise';
 import AppExemptModal from '../AppExemptModal';
 import AppPermissionsReviewModal from '../AppPermissionsReviewModal';
