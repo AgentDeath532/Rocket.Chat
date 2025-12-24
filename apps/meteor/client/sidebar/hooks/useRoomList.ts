@@ -10,7 +10,6 @@ import { useOmnichannelEnabled } from '../../views/omnichannel/hooks/useOmnichan
 import { useQueuedInquiries } from '../../views/omnichannel/hooks/useQueuedInquiries';
 
 const query = { open: { $ne: false } };
-
 const emptyQueue: ILivechatInquiryRecord[] = [];
 
 const order = [
@@ -66,8 +65,9 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 			const conversation = new Set<SubscriptionWithRoom>();
 			const onHold = new Set<SubscriptionWithRoom>();
 
-			// MAPPING: Ensure these exact channel names are moved to Teams
+			// MAPPING BASED ON YOUR SCREENSHOTS
 			const teamMapping: Record<string, string> = {
+				// Client Logs Parent
 				"General Logs": "Scale Hosting Client Logs",
 				"Anti Fraud": "Scale Hosting Client Logs",
 				"Suspicious Accounts": "Scale Hosting Client Logs",
@@ -76,76 +76,62 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 				"Failed Logins": "Scale Hosting Client Logs",
 				"IP Blocked": "Scale Hosting Client Logs",
 				"Account Suspeneded": "Scale Hosting Client Logs",
+				// Dev Panel Logs Parent
 				"Server-Abuse": "Scale Hosting Dev Panel Logs",
 				"Server Delete": "Scale Hosting Dev Panel Logs",
 				"Server Update": "Scale Hosting Dev Panel Logs",
 				"Server Create": "Scale Hosting Dev Panel Logs",
 				"Server Suspened": "Scale Hosting Dev Panel Logs",
 				"Account Delete": "Scale Hosting Dev Panel Logs",
-				"Account Login": "Scale Hosting Dev Panel Logs"
+				"Account Login": "Scale Hosting Dev Panel Logs",
+				"Account Update": "Scale Hosting Dev Panel Logs",
+				"Account Create": "Scale Hosting Dev Panel Logs",
+				// Management Parent
+				"Private": "Scale Hosting Management",
+				"Staff Recruitment": "Scale Hosting Management",
+				"Team Updates": "Scale Hosting Management",
+				"Team Chat": "Scale Hosting Management",
+				// Staff Team Parent
+				"Bug Reports": "Scale Hosting Staff Team",
+				"Change Logs": "Scale Hosting Staff Team",
+				"Staff Chat": "Scale Hosting Staff Team",
+				"Staff Announcements": "Scale Hosting Staff Team",
+				"Staff Rules": "Scale Hosting Staff Team"
 			};
 
 			rooms.forEach((room) => {
-				if (room.archived) {
-					return;
-				}
+				if (room.archived) return;
+				if (incomingCalls.find((call) => call.rid === room.rid)) return incomingCall.add(room);
+				if (sidebarShowUnread && (room.alert || room.unread || room.tunread?.length) && !room.hideUnreadStatus) return unread.add(room);
+				if (favoritesEnabled && room.f) return favorite.add(room);
+				if (sidebarGroupByType && room.teamMain) return team.add(room);
 
-				if (incomingCalls.find((call) => call.rid === room.rid)) {
-					return incomingCall.add(room);
-				}
-
-				if (sidebarShowUnread && (room.alert || room.unread || room.tunread?.length) && !room.hideUnreadStatus) {
-					return unread.add(room);
-				}
-
-				if (favoritesEnabled && room.f) {
-					return favorite.add(room);
-				}
-
-				if (sidebarGroupByType && room.teamMain) {
-					return team.add(room);
-				}
-
-				// CUSTOM LOGIC: Intercept Mapped Channels
 				const parentTeamName = teamMapping[room.name || ''];
-				if (sidebarGroupByType && parentTeamName) {
-					return team.add(room);
-				}
+				if (sidebarGroupByType && parentTeamName) return team.add(room);
 
-				if (sidebarGroupByType && isDiscussionEnabled && room.prid) {
-					return discussion.add(room);
-				}
-
-				if (room.t === 'c' || room.t === 'p') {
-					return channels.add(room);
-				}
-
-				if (room.t === 'l' && room.onHold) {
-					return showOmnichannel && onHold.add(room);
-				}
-
-				if (room.t === 'l') {
-					return showOmnichannel && omnichannel.add(room);
-				}
-
-				if (room.t === 'd') {
-					return direct.add(room);
-				}
-
+				if (sidebarGroupByType && isDiscussionEnabled && room.prid) return discussion.add(room);
+				if (room.t === 'c' || room.t === 'p') return channels.add(room);
+				if (room.t === 'l' && room.onHold) return showOmnichannel && onHold.add(room);
+				if (room.t === 'l') return showOmnichannel && omnichannel.add(room);
+				if (room.t === 'd') return direct.add(room);
 				conversation.add(room);
 			});
 
-			// SORTING: Nesting logic for the Team list
+			// NEW SORTING LOGIC: Groups Children immediately after their Parent Team
 			const sortedTeamArray = [...team].sort((a: any, b: any) => {
 				const aName = a.name || '';
 				const bName = b.name || '';
 				const aParent = teamMapping[aName];
 				const bParent = teamMapping[bName];
 
-				if (aParent === bName) return 1;
-				if (bParent === aName) return -1;
+				if (aName === bParent) return -1;
+				if (bName === aParent) return 1;
+
 				if (aParent && aParent === bParent) return aName.localeCompare(bName);
-				return aName.localeCompare(bName);
+
+				const aGroupKey = aParent || aName;
+				const bGroupKey = bParent || bName;
+				return aGroupKey.localeCompare(bGroupKey) || aName.localeCompare(bName);
 			});
 
 			const groups = new Map<string, Set<any>>();
@@ -155,10 +141,7 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 			if (showOmnichannel && onHold.size) groups.set('On_Hold_Chats', onHold);
 			if (sidebarShowUnread && unread.size) groups.set('Unread', unread);
 			if (favoritesEnabled && favorite.size) groups.set('Favorites', favorite);
-			
-			// Inject our sorted array into the Teams section
 			if (sidebarGroupByType && sortedTeamArray.length) groups.set('Teams', new Set(sortedTeamArray));
-
 			if (sidebarGroupByType && isDiscussionEnabled && discussion.size) groups.set('Discussions', discussion);
 			if (sidebarGroupByType && channels.size) groups.set('Channels', channels);
 			if (sidebarGroupByType && direct.size) groups.set('Direct_Messages', direct);
@@ -168,69 +151,34 @@ export const useRoomList = ({ collapsedGroups }: { collapsedGroups?: string[] })
 				(acc, key) => {
 					const value = groups.get(key);
 					if (!value) return acc;
-
 					acc.groupsList.push(key as TranslationKey);
-
-					const groupedUnreadInfoAcc = {
-						userMentions: 0,
-						groupMentions: 0,
-						tunread: [],
-						tunreadUser: [],
-						unread: 0,
-					};
+					const groupedUnreadInfoAcc = { userMentions: 0, groupMentions: 0, tunread: [], tunreadUser: [], unread: 0 };
 
 					if (isCollapsed(key)) {
-						const groupedUnreadInfo = [...value].reduce(
-							(counter, room) => {
-								if (room.hideUnreadStatus) return counter;
-								counter.userMentions += room.userMentions || 0;
-								counter.groupMentions += room.groupMentions || 0;
-								counter.tunread = [...counter.tunread, ...(room.tunread || [])];
-								counter.tunreadUser = [...counter.tunreadUser, ...(room.tunreadUser || [])];
-								counter.unread += room.unread || 0;
-								!room.unread && !room.tunread?.length && room.alert && (counter.unread += 1);
-								return counter;
-							},
-							groupedUnreadInfoAcc,
-						);
-
+						const groupedUnreadInfo = [...value].reduce((counter, room) => {
+							if (room.hideUnreadStatus) return counter;
+							counter.userMentions += room.userMentions || 0;
+							counter.groupMentions += room.groupMentions || 0;
+							counter.tunread = [...counter.tunread, ...(room.tunread || [])];
+							counter.tunreadUser = [...counter.tunreadUser, ...(room.tunreadUser || [])];
+							counter.unread += room.unread || 0;
+							!room.unread && !room.tunread?.length && room.alert && (counter.unread += 1);
+							return counter;
+						}, groupedUnreadInfoAcc);
 						acc.groupedUnreadInfo.push(groupedUnreadInfo);
 						acc.groupsCount.push(0);
 						return acc;
 					}
-
 					acc.groupedUnreadInfo.push(groupedUnreadInfoAcc);
 					acc.groupsCount.push(value.size);
 					acc.roomList.push(...value);
 					return acc;
 				},
-				{
-					groupsCount: [],
-					groupsList: [],
-					roomList: [],
-					groupedUnreadInfo: [],
-				} as useRoomListReturnType,
+				{ groupsCount: [], groupsList: [], roomList: [], groupedUnreadInfo: [] } as useRoomListReturnType,
 			);
-		}, [
-			rooms,
-			showOmnichannel,
-			inquiries.enabled,
-			queue,
-			sidebarShowUnread,
-			favoritesEnabled,
-			sidebarGroupByType,
-			isDiscussionEnabled,
-			sidebarOrder,
-			collapsedGroups,
-			incomingCalls,
-		]),
+		}, [rooms, showOmnichannel, inquiries.enabled, queue, sidebarShowUnread, favoritesEnabled, sidebarGroupByType, isDiscussionEnabled, sidebarOrder, collapsedGroups, incomingCalls]),
 		50,
 	);
 
-	return {
-		roomList,
-		groupsCount,
-		groupsList,
-		groupedUnreadInfo,
-	};
+	return { roomList, groupsCount, groupsList, groupedUnreadInfo };
 };
